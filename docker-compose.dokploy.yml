@@ -1,0 +1,76 @@
+# Dokploy-optimized Docker Compose configuration
+# Use this file when deploying to Dokploy
+#
+# In Dokploy:
+# 1. Create a new "Docker Compose" service
+# 2. Set the Compose Path to: docker-compose.dokploy.yml
+# 3. Configure environment variables in the Environment tab
+# 4. Deploy
+
+services:
+  clawdbot-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.clawdbot.rule=Host(`${CLAWDBOT_DOMAIN}`)"
+      - "traefik.http.routers.clawdbot.entrypoints=websecure"
+      - "traefik.http.routers.clawdbot.tls.certresolver=letsencrypt"
+      - "traefik.http.services.clawdbot.loadbalancer.server.port=18789"
+    environment:
+      HOME: /home/node
+      TERM: xterm-256color
+      NODE_ENV: production
+      # Required: Gateway authentication token
+      CLAWDBOT_GATEWAY_TOKEN: ${CLAWDBOT_GATEWAY_TOKEN}
+      # Optional: Claude API credentials (configure in Dokploy Environment tab)
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      CLAUDE_AI_SESSION_KEY: ${CLAUDE_AI_SESSION_KEY:-}
+      CLAUDE_WEB_SESSION_KEY: ${CLAUDE_WEB_SESSION_KEY:-}
+      CLAUDE_WEB_COOKIE: ${CLAUDE_WEB_COOKIE:-}
+      # Optional: OpenAI API key
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      # Optional: Z.AI GLM API key
+      ZAI_API_KEY: ${ZAI_API_KEY:-}
+      CLAWDBOT_PAIRING_MODE: ${CLAWDBOT_PAIRING_MODE:-auto}
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}}
+    volumes:
+      # Use Docker named volumes for Dokploy compatibility
+      # These persist across deployments and support Volume Backups
+      - clawdbot-config:/home/node/.clawdbot
+      - clawdbot-workspace:/home/node/clawd
+    ports:
+      - "18789:18789"
+      - "18790:18790"
+    networks:
+      - dokploy-network
+    init: true
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "dist/entry.js", "health", "--token", "${CLAWDBOT_GATEWAY_TOKEN}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    command:
+      [
+        "node",
+        "dist/entry.js",
+        "gateway",
+        "--bind",
+        "lan",
+        "--port",
+        "18789",
+        "--allow-unconfigured"
+      ]
+
+volumes:
+  clawdbot-config:
+    name: clawdbot-config
+  clawdbot-workspace:
+    name: clawdbot-workspace
+
+networks:
+  dokploy-network:
+    external: true
