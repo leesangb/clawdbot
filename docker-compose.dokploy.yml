@@ -34,7 +34,7 @@ services:
       # Optional: Z.AI GLM API key
       ZAI_API_KEY: ${ZAI_API_KEY:-}
       CLAWDBOT_PAIRING_MODE: ${CLAWDBOT_PAIRING_MODE:-auto}
-      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}}
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
     volumes:
       # Use Docker named volumes for Dokploy compatibility
       # These persist across deployments and support Volume Backups
