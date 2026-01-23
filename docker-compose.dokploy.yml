@@ -40,6 +40,7 @@ services:
       # These persist across deployments and support Volume Backups
       - clawdbot-config:/home/node/.clawdbot
       - clawdbot-workspace:/home/node/clawd
+      - clawdbot-fonts:/usr/share/fonts  # Preserve fonts across deployments
     ports:
       - "18789:18789"
       - "18790:18790"
@@ -65,7 +66,7 @@ volumes:
     name: clawdbot-config
   clawdbot-workspace:
     name: clawdbot-workspace
-
-networks:
+  clawdbot-fonts:
+    name: clawdbot-fonts
   dokploy-network:
     external: true
