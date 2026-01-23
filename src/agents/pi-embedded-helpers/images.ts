@@ -1,5 +1,6 @@
 import type { AgentMessage, AgentToolResult } from "@mariozechner/pi-agent-core";
 
+import type { ToolCallIdMode } from "../tool-call-id.js";
 import { sanitizeToolCallIdsForCloudCodeAssist } from "../tool-call-id.js";
 import { sanitizeContentBlocksImages } from "../tool-images.js";
 import { stripThoughtSignatures } from "./bootstrap.js";
@@ -31,7 +32,14 @@ export async function sanitizeSessionMessagesImages(
   messages: AgentMessage[],
   label: string,
   options?: {
+    sanitizeMode?: "full" | "images-only";
     sanitizeToolCallIds?: boolean;
+    /**
+     * Mode for tool call ID sanitization:
+     * - "strict" (alphanumeric only)
+     * - "strict9" (alphanumeric only, length 9)
+     */
+    toolCallIdMode?: ToolCallIdMode;
     enforceToolCallLast?: boolean;
     preserveSignatures?: boolean;
     sanitizeThoughtSignatures?: {
@@ -40,11 +48,14 @@ export async function sanitizeSessionMessagesImages(
     };
   },
 ): Promise<AgentMessage[]> {
+  const sanitizeMode = options?.sanitizeMode ?? "full";
+  const allowNonImageSanitization = sanitizeMode === "full";
   // We sanitize historical session messages because Anthropic can reject a request
   // if the transcript contains oversized base64 images (see MAX_IMAGE_DIMENSION_PX).
-  const sanitizedIds = options?.sanitizeToolCallIds
-    ? sanitizeToolCallIdsForCloudCodeAssist(messages)
-    : messages;
+  const sanitizedIds =
+    allowNonImageSanitization && options?.sanitizeToolCallIds
+      ? sanitizeToolCallIdsForCloudCodeAssist(messages, options.toolCallIdMode)
+      : messages;
   const out: AgentMessage[] = [];
   for (const msg of sanitizedIds) {
     if (!msg || typeof msg !== "object") {
@@ -79,11 +90,19 @@ export async function sanitizeSessionMessagesImages(
 
     if (role === "assistant") {
       const assistantMsg = msg as Extract<AgentMessage, { role: "assistant" }>;
-      if (isEmptyAssistantErrorMessage(assistantMsg)) {
+      if (allowNonImageSanitization && isEmptyAssistantErrorMessage(assistantMsg)) {
         continue;
       }
       const content = assistantMsg.content;
       if (Array.isArray(content)) {
+        if (!allowNonImageSanitization) {
+          const nextContent = (await sanitizeContentBlocksImages(
+            content as unknown as ContentBlock[],
+            label,
+          )) as unknown as typeof assistantMsg.content;
+          out.push({ ...assistantMsg, content: nextContent });
+          continue;
+        }
         const strippedContent = options?.preserveSignatures
           ? content // Keep signatures for Antigravity Claude
           : stripThoughtSignatures(content, options?.sanitizeThoughtSignatures); // Strip for Gemini
