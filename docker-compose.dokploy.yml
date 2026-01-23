@@ -55,14 +55,9 @@ services:
       start_period: 60s
     command:
       [
-        "node",
-        "dist/entry.js",
-        "gateway",
-        "--bind",
-        "lan",
-        "--port",
-        "18789",
-        "--allow-unconfigured"
+        "/bin/sh",
+        "-c",
+        "rm -f /home/node/.clawdbot/gateway*.lock && node dist/entry.js gateway --bind lan --port 18789 --allow-unconfigured"
       ]
 
 volumes:
