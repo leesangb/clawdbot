@@ -37,6 +37,8 @@ services:
       DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
       # Binaries to install (comma-separated)
       BINARIES_TO_INSTALL: ${BINARIES_TO_INSTALL:-gh,jq}
+      # GitHub token for gh CLI authentication
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
     volumes:
       # Use Docker named volumes for Dokploy compatibility
       # These persist across deployments and support Volume Backups

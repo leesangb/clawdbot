@@ -45,15 +45,23 @@ if [ -n "$BINARIES_TO_INSTALL" ]; then
         apt-get install -y "$binary"
       fi
     done
-
-    # Cleanup
-    apt-get clean
-    rm -rf /var/lib/apt/lists/*
   else
     echo "[prestart] All binaries already installed."
   fi
 else
   echo "[prestart] No BINARIES_TO_INSTALL set, skipping binary installation."
+fi
+
+# GitHub CLI authentication
+if [ -n "$GITHUB_TOKEN" ] && command -v gh >/dev/null 2>&1; then
+  echo "[prestart] Checking GitHub authentication..."
+  if ! gh auth status >/dev/null 2>&1; then
+    echo "[prestart] Logging in to GitHub with token..."
+    echo "$GITHUB_TOKEN" | gh auth login --with-token
+    echo "[prestart] GitHub login successful."
+  else
+    echo "[prestart] Already logged in to GitHub."
+  fi
 fi
 
 echo "[prestart] Complete, starting application..."
