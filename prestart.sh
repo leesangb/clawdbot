@@ -1,68 +1,61 @@
 #!/bin/sh
-set -e
 
-# Prestart script for dokploy deployment
-# Ensures binaries and shell configuration persist across restarts
+echo "[prestart] Starting prestart script..."
 
-echo "[prestart] Checking binaries to install..."
-
-# Create shell config directory
-mkdir -p /root/.config/shell
-
-# Setup aliases if not already set
-if ! grep -q "alias clawdbot=" /root/.bashrc /root/.config/shell/aliases.sh 2>/dev/null; then
-  echo "[prestart] Setting up clawdbot alias..."
-  echo 'alias clawdbot="node /app/dist/entry.js"' > /root/.config/shell/aliases.sh
-  if [ -n "$BASH_VERSION" ]; then
-    echo 'source /root/.config/shell/aliases.sh' >> /root/.bashrc
-  elif [ -n "$ZSH_VERSION" ]; then
-    echo 'source /root/.config/shell/aliases.sh' >> /root/.zshrc
+install_binaries() {
+  if [ -z "$BINARIES_TO_INSTALL" ]; then
+    echo "[prestart] No BINARIES_TO_INSTALL set, skipping."
+    return 0
   fi
-fi
 
-# Install binaries from BINARIES_TO_INSTALL env var if not present
-if [ -n "$BINARIES_TO_INSTALL" ]; then
-  echo "[prestart] Installing binaries: $BINARIES_TO_INSTALL"
-  IFS=, read -ra BINARIES <<< "$BINARIES_TO_INSTALL"
+  echo "[prestart] Binaries to install: $BINARIES_TO_INSTALL"
+  
   NEED_INSTALL=0
-
-  for binary in "${BINARIES[@]}"; do
-    binary=$(echo "$binary" | xargs)  # trim whitespace
-    if [ -n "$binary" ] && [ ! -f "/usr/local/bin/$binary" ] && ! command -v "$binary" >/dev/null 2>&1; then
+  OLD_IFS="$IFS"
+  IFS=','
+  for binary in $BINARIES_TO_INSTALL; do
+    binary=$(echo "$binary" | tr -d ' ')
+    if [ -n "$binary" ] && ! command -v "$binary" >/dev/null 2>&1; then
+      echo "[prestart] $binary not found, will install"
       NEED_INSTALL=1
-      break
+    else
+      echo "[prestart] $binary already available"
     fi
   done
+  IFS="$OLD_IFS"
 
   if [ "$NEED_INSTALL" -eq 1 ]; then
     echo "[prestart] Running apt-get update..."
-    apt-get update -qq
+    apt-get update -qq || { echo "[prestart] apt-get update failed"; return 1; }
 
-    for binary in "${BINARIES[@]}"; do
-      binary=$(echo "$binary" | xargs)
+    OLD_IFS="$IFS"
+    IFS=','
+    for binary in $BINARIES_TO_INSTALL; do
+      binary=$(echo "$binary" | tr -d ' ')
       if [ -n "$binary" ] && ! command -v "$binary" >/dev/null 2>&1; then
         echo "[prestart] Installing $binary..."
-        apt-get install -y "$binary"
+        apt-get install -y "$binary" || echo "[prestart] Failed to install $binary"
       fi
     done
+    IFS="$OLD_IFS"
   else
     echo "[prestart] All binaries already installed."
   fi
-else
-  echo "[prestart] No BINARIES_TO_INSTALL set, skipping binary installation."
-fi
+}
 
-# GitHub CLI authentication
-if [ -n "$GITHUB_TOKEN" ] && command -v gh >/dev/null 2>&1; then
-  echo "[prestart] Checking GitHub authentication..."
-  if ! gh auth status >/dev/null 2>&1; then
-    echo "[prestart] Logging in to GitHub with token..."
-    echo "$GITHUB_TOKEN" | gh auth login --with-token
-    echo "[prestart] GitHub login successful."
-  else
-    echo "[prestart] Already logged in to GitHub."
+setup_github_auth() {
+  if [ -n "$GITHUB_TOKEN" ] && command -v gh >/dev/null 2>&1; then
+    echo "[prestart] Setting up GitHub authentication..."
+    if ! gh auth status >/dev/null 2>&1; then
+      echo "$GITHUB_TOKEN" | gh auth login --with-token && echo "[prestart] GitHub login successful."
+    else
+      echo "[prestart] Already logged in to GitHub."
+    fi
   fi
-fi
+}
 
-echo "[prestart] Complete, starting application..."
+install_binaries
+setup_github_auth
+
+echo "[prestart] Complete."
 exec "$@"

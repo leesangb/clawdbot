@@ -45,9 +45,6 @@ services:
       - clawdbot-config:/home/node/.clawdbot
       - clawdbot-workspace:/home/node/clawd
       - clawdbot-fonts:/usr/share/fonts  # Preserve fonts across deployments
-      # Persistent volumes for binaries and shell configuration
-      - clawdbot-binaries:/usr/local/bin
-      - clawdbot-shell:/root/.config/shell
       # Prestart script for binary installation
       - ./prestart.sh:/docker-entrypoint.d/prestart.sh:ro
     ports:
@@ -77,10 +74,6 @@ volumes:
     name: clawdbot-workspace
   clawdbot-fonts:
     name: clawdbot-fonts
-  clawdbot-binaries:
-    name: clawdbot-binaries
-  clawdbot-shell:
-    name: clawdbot-shell
 
 networks:
   dokploy-network:
