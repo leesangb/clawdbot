@@ -38,6 +38,7 @@ import {
   isRateLimitAssistantError,
   isTimeoutErrorMessage,
   pickFallbackThinkingLevel,
+  type FailoverReason,
 } from "../pi-embedded-helpers.js";
 import { normalizeUsage, type UsageLike } from "../usage.js";
 
@@ -71,6 +72,8 @@ export async function runEmbeddedPiAgent(
   const globalLane = resolveGlobalLane(params.lane);
   const enqueueGlobal =
     params.enqueue ?? ((task, opts) => enqueueCommandInLane(globalLane, task, opts));
+  const enqueueSession =
+    params.enqueue ?? ((task, opts) => enqueueCommandInLane(sessionLane, task, opts));
   const channelHint = params.messageChannel ?? params.messageProvider;
   const resolvedToolResultFormat =
     params.toolResultFormat ??
@@ -79,8 +82,9 @@ export async function runEmbeddedPiAgent(
         ? "markdown"
         : "plain"
       : "markdown");
+  const isProbeSession = params.sessionId?.startsWith("probe-") ?? false;
 
-  return enqueueCommandInLane(sessionLane, () =>
+  return enqueueSession(() =>
     enqueueGlobal(async () => {
       const started = Date.now();
       const resolvedWorkspace = resolveUserPath(params.workspaceDir);
@@ -89,6 +93,8 @@ export async function runEmbeddedPiAgent(
       const provider = (params.provider ?? DEFAULT_PROVIDER).trim() || DEFAULT_PROVIDER;
       const modelId = (params.model ?? DEFAULT_MODEL).trim() || DEFAULT_MODEL;
       const agentDir = params.agentDir ?? resolveClawdbotAgentDir();
+      const fallbackConfigured =
+        (params.config?.agents?.defaults?.model?.fallbacks?.length ?? 0) > 0;
       await ensureClawdbotModelsJson(params.config, agentDir);
 
       const { model, error, authStorage, modelRegistry } = resolveModel(
@@ -161,6 +167,42 @@ export async function runEmbeddedPiAgent(
       const attemptedThinking = new Set<ThinkLevel>();
       let apiKeyInfo: ApiKeyInfo | null = null;
       let lastProfileId: string | undefined;
+
+      const resolveAuthProfileFailoverReason = (params: {
+        allInCooldown: boolean;
+        message: string;
+      }): FailoverReason => {
+        if (params.allInCooldown) return "rate_limit";
+        const classified = classifyFailoverReason(params.message);
+        return classified ?? "auth";
+      };
+
+      const throwAuthProfileFailover = (params: {
+        allInCooldown: boolean;
+        message?: string;
+        error?: unknown;
+      }): never => {
+        const fallbackMessage = `No available auth profile for ${provider} (all in cooldown or unavailable).`;
+        const message =
+          params.message?.trim() ||
+          (params.error ? describeUnknownError(params.error).trim() : "") ||
+          fallbackMessage;
+        const reason = resolveAuthProfileFailoverReason({
+          allInCooldown: params.allInCooldown,
+          message,
+        });
+        if (fallbackConfigured) {
+          throw new FailoverError(message, {
+            reason,
+            provider,
+            model: modelId,
+            status: resolveFailoverStatus(reason),
+            cause: params.error,
+          });
+        }
+        if (params.error instanceof Error) throw params.error;
+        throw new Error(message);
+      };
 
       const resolveApiKeyForCandidate = async (candidate?: string) => {
         return getApiKeyForModel({
@@ -235,14 +277,17 @@ export async function runEmbeddedPiAgent(
           break;
         }
         if (profileIndex >= profileCandidates.length) {
-          throw new Error(
-            `No available auth profile for ${provider} (all in cooldown or unavailable).`,
-          );
+          throwAuthProfileFailover({ allInCooldown: true });
         }
       } catch (err) {
-        if (profileCandidates[profileIndex] === lockedProfileId) throw err;
+        if (err instanceof FailoverError) throw err;
+        if (profileCandidates[profileIndex] === lockedProfileId) {
+          throwAuthProfileFailover({ allInCooldown: false, error: err });
+        }
         const advanced = await advanceAuthProfile();
-        if (!advanced) throw err;
+        if (!advanced) {
+          throwAuthProfileFailover({ allInCooldown: false, error: err });
+        }
       }
 
       try {
@@ -261,6 +306,10 @@ export async function runEmbeddedPiAgent(
             agentAccountId: params.agentAccountId,
             messageTo: params.messageTo,
             messageThreadId: params.messageThreadId,
+            groupId: params.groupId,
+            groupChannel: params.groupChannel,
+            groupSpace: params.groupSpace,
+            spawnedBy: params.spawnedBy,
             currentChannelId: params.currentChannelId,
             currentThreadTs: params.currentThreadTs,
             replyToMode: params.replyToMode,
@@ -272,6 +321,7 @@ export async function runEmbeddedPiAgent(
             skillsSnapshot: params.skillsSnapshot,
             prompt,
             images: params.images,
+            disableTools: params.disableTools,
             provider,
             modelId,
             model,
@@ -385,9 +435,7 @@ export async function runEmbeddedPiAgent(
             }
             // FIX: Throw FailoverError for prompt errors when fallbacks configured
             // This enables model fallback for quota/rate limit errors during prompt submission
-            const promptFallbackConfigured =
-              (params.config?.agents?.defaults?.model?.fallbacks?.length ?? 0) > 0;
-            if (promptFallbackConfigured && isFailoverErrorMessage(errorText)) {
+            if (fallbackConfigured && isFailoverErrorMessage(errorText)) {
               throw new FailoverError(errorText, {
                 reason: promptFailoverReason ?? "unknown",
                 provider,
@@ -411,8 +459,6 @@ export async function runEmbeddedPiAgent(
             continue;
           }
 
-          const fallbackConfigured =
-            (params.config?.agents?.defaults?.model?.fallbacks?.length ?? 0) > 0;
           const authFailure = isAuthAssistantError(lastAssistant);
           const rateLimitFailure = isRateLimitAssistantError(lastAssistant);
           const failoverFailure = isFailoverAssistantError(lastAssistant);
@@ -455,7 +501,7 @@ export async function runEmbeddedPiAgent(
                 cfg: params.config,
                 agentDir: params.agentDir,
               });
-              if (timedOut) {
+              if (timedOut && !isProbeSession) {
                 log.warn(
                   `Profile ${lastProfileId} timed out (possible rate limit). Trying next account...`,
                 );

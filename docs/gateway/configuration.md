@@ -1446,6 +1446,65 @@ active agent’s `identity.emoji` when set, otherwise `"👀"`. Set it to `""` t
 `removeAckAfterReply` removes the bot’s ack reaction after a reply is sent
 (Slack/Discord/Telegram only). Default: `false`.
 
+#### `messages.tts`
+
+Enable text-to-speech for outbound replies. When on, Clawdbot generates audio
+using ElevenLabs or OpenAI and attaches it to responses. Telegram uses Opus
+voice notes; other channels send MP3 audio.
+
+```json5
+{
+  messages: {
+    tts: {
+      enabled: true,
+      mode: "final", // final | all (include tool/block replies)
+      provider: "elevenlabs",
+      summaryModel: "openai/gpt-4.1-mini",
+      modelOverrides: {
+        enabled: true
+      },
+      maxTextLength: 4000,
+      timeoutMs: 30000,
+      prefsPath: "~/.clawdbot/settings/tts.json",
+      elevenlabs: {
+        apiKey: "elevenlabs_api_key",
+        baseUrl: "https://api.elevenlabs.io",
+        voiceId: "voice_id",
+        modelId: "eleven_multilingual_v2",
+        seed: 42,
+        applyTextNormalization: "auto",
+        languageCode: "en",
+        voiceSettings: {
+          stability: 0.5,
+          similarityBoost: 0.75,
+          style: 0.0,
+          useSpeakerBoost: true,
+          speed: 1.0
+        }
+      },
+      openai: {
+        apiKey: "openai_api_key",
+        model: "gpt-4o-mini-tts",
+        voice: "alloy"
+      }
+    }
+  }
+}
+```
+
+Notes:
+- `messages.tts.enabled` can be overridden by local user prefs (see `/tts on`, `/tts off`).
+- `prefsPath` stores local overrides (enabled/provider/limit/summarize).
+- `maxTextLength` is a hard cap for TTS input; summaries are truncated to fit.
+- `summaryModel` overrides `agents.defaults.model.primary` for auto-summary.
+  - Accepts `provider/model` or an alias from `agents.defaults.models`.
+- `modelOverrides` enables model-driven overrides like `[[tts:...]]` tags (on by default).
+- `/tts limit` and `/tts summary` control per-user summarization settings.
+- `apiKey` values fall back to `ELEVENLABS_API_KEY`/`XI_API_KEY` and `OPENAI_API_KEY`.
+- `elevenlabs.baseUrl` overrides the ElevenLabs API base URL.
+- `elevenlabs.voiceSettings` supports `stability`/`similarityBoost`/`style` (0..1),
+  `useSpeakerBoost`, and `speed` (0.5..2.0).
+
 ### `talk`
 
 Defaults for Talk mode (macOS/iOS/Android). Voice IDs fall back to `ELEVENLABS_VOICE_ID` or `SAG_VOICE_ID` when unset.
@@ -1970,6 +2029,7 @@ Example (provider/model-specific allowlist):
 ```
 
 `tools.allow` / `tools.deny` configure a global tool allow/deny policy (deny wins).
+Matching is case-insensitive and supports `*` wildcards (`"*"` means all tools).
 This is applied even when the Docker sandbox is **off**.
 
 Example (disable browser/canvas everywhere):

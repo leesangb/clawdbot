@@ -22,6 +22,11 @@ You can globally allow/deny tools via `tools.allow` / `tools.deny` in `clawdbot.
 }
 ```
 
+Notes:
+- Matching is case-insensitive.
+- `*` wildcards are supported (`"*"` means all tools).
+- If `tools.allow` only references unknown or unloaded plugin tool names, Clawdbot logs a warning and ignores the allowlist so core tools stay available.
+
 ## Tool profiles (base allowlist)
 
 `tools.profile` sets a **base tool allowlist** before `tools.allow`/`tools.deny`.
@@ -156,6 +161,7 @@ alongside tools (for example, the voice-call plugin).
 
 Optional plugin tools:
 - [Lobster](/tools/lobster): typed workflow runtime with resumable approvals (requires the Lobster CLI on the gateway host).
+- [LLM Task](/tools/llm-task): JSON-only LLM step for structured workflow output (optional schema validation).
 
 ## Tool inventory
 
