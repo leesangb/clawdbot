@@ -35,12 +35,17 @@ services:
       ZAI_API_KEY: ${ZAI_API_KEY:-}
       CLAWDBOT_PAIRING_MODE: ${CLAWDBOT_PAIRING_MODE:-auto}
       DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
+      # Binaries to install (comma-separated)
+      BINARIES_TO_INSTALL: ${BINARIES_TO_INSTALL:-gh,jq}
     volumes:
       # Use Docker named volumes for Dokploy compatibility
       # These persist across deployments and support Volume Backups
       - clawdbot-config:/home/node/.clawdbot
       - clawdbot-workspace:/home/node/clawd
       - clawdbot-fonts:/usr/share/fonts  # Preserve fonts across deployments
+      # Persistent volumes for binaries and shell configuration
+      - /data/clawdbot/binaries:/usr/local/bin
+      - /data/clawdbot/shell:/root/.config/shell
     ports:
       - "18789:18789"
       - "18790:18790"
