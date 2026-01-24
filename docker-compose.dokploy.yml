@@ -46,6 +46,8 @@ services:
       # Persistent volumes for binaries and shell configuration
       - /data/clawdbot/binaries:/usr/local/bin
       - /data/clawdbot/shell:/root/.config/shell
+      # Prestart script for binary installation
+      - ./prestart.sh:/docker-entrypoint.d/prestart.sh:ro
     ports:
       - "18789:18789"
       - "18790:18790"
@@ -63,7 +65,7 @@ services:
       [
         "/bin/sh",
         "-c",
-        "rm -f /home/node/.clawdbot/gateway*.lock && node dist/entry.js gateway --bind lan --port 18789 --allow-unconfigured"
+        "sh /docker-entrypoint.d/prestart.sh && rm -f /home/node/.clawdbot/gateway*.lock && node dist/entry.js gateway --bind lan --port 18789 --allow-unconfigured"
       ]
 
 volumes:
